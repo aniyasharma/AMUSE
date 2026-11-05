@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="AMUSE">
+  <meta name="theme-color" content="#0a84ff">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/logo.png">
+  <title>AMUSE</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main id="app">
+    <section class="screen auth" data-screen="auth">
+      <img class="mark" src="/static/logo.png" alt="AMUSE">
+      <div class="glass">
+        <div class="segmented">
+          <button type="button" class="seg on" id="tab-signin">Sign In</button>
+          <button type="button" class="seg" id="tab-signup">Create Account</button>
+        </div>
+        <form id="auth-form" class="stack">
+          <div id="name-field" class="hidden stack">
+            <label for="auth-name">Name</label>
+            <input id="auth-name" autocomplete="name" placeholder="Your name">
+          </div>
+          <label for="auth-email">Email</label>
+          <input id="auth-email" type="email" autocomplete="email" placeholder="you@email.com" required>
+          <label for="auth-password">Password</label>
+          <input id="auth-password" type="password" autocomplete="current-password" placeholder="At least 6 characters" required minlength="6">
+          <button class="primary" type="submit" id="auth-submit">Sign In</button>
+          <button class="text" type="button" id="forgot-open">Forgot password?</button>
+          <p class="error" id="auth-error"></p>
+        </form>
+        <form id="forgot-form" class="stack hidden">
+          <p class="hint">Enter the name and email on your account, then choose a new password.</p>
+          <label for="forgot-name">Name</label>
+          <input id="forgot-name" autocomplete="name" placeholder="Your name" required>
+          <label for="forgot-email">Email</label>
+          <input id="forgot-email" type="email" autocomplete="email" placeholder="you@email.com" required>
+          <label for="forgot-password">New password</label>
+          <input id="forgot-password" type="password" autocomplete="new-password" placeholder="At least 6 characters" required minlength="6">
+          <label for="forgot-confirm">Confirm password</label>
+          <input id="forgot-confirm" type="password" autocomplete="new-password" placeholder="Type it again" required minlength="6">
+          <button class="primary" type="submit" id="forgot-submit">Reset password</button>
+          <button class="text" type="button" id="forgot-back">Back to sign in</button>
+          <p class="error" id="forgot-error"></p>
+        </form>
+      </div>
+      <p class="fine">Your account, recommendations, and feedback stay on this computer in amuse_data.db.</p>
+    </section>
+
+    <section class="screen welcome hidden" data-screen="welcome">
+      <header class="account-bar">
+        <p id="hello"></p>
+        <button class="text" id="signout" type="button">Sign Out</button>
+      </header>
+      <img class="lockup" src="/static/logo.png" alt="AMUSE, headphones around a brain">
+      <p class="lede">Adaptive music for unburdening stress and emotions.</p>
+      <button class="primary" data-next="taste">Get started</button>
+    </section>
+
+    <section class="screen checkin hidden" data-screen="checkin">
+      <header class="account-bar">
+        <p id="checkin-hello"></p>
+        <button class="text" id="signout-checkin" type="button">Sign Out</button>
+      </header>
+      <div class="glass stack">
+        <p class="eyebrow">Daily check-in</p>
+        <h2>Before music</h2>
+        <p class="hint" id="checkin-hint">HRV every time you open AMUSE. Sleep once per day.</p>
+
+        <div id="watch-block" class="stack">
+          <p class="eyebrow">Apple Watch</p>
+          <p class="hint">AMUSE builds the Shortcut for you (Apple won’t let a website install it silently — you only tap Add).</p>
+          <a class="primary link" id="watch-install" href="/amuse-watch.shortcut">Install AMUSE Watch Shortcut</a>
+          <a class="ghost link" id="watch-run" href="shortcuts://run-shortcut?name=AMUSE%20Watch">Get from Apple Watch</a>
+          <p class="hint">1) Tap Install → Add Shortcut (allow Health). 2) Tap Get from Apple Watch. It reads HRV + resting HR from Health, asks sleep hours, then returns here filled in.</p>
+          <p class="hint" id="watch-status"></p>
+          <details class="setup hidden" id="watch-setup">
+            <summary>URL template (only if install fails)</summary>
+            <code id="watch-url-template" class="block"></code>
+            <button class="ghost" type="button" id="copy-watch-template">Copy URL template</button>
+            <p class="hint" id="watch-copy-note"></p>
+          </details>
+        </div>
+
+        <div id="checkin-hrv-block" class="stack">
+          <label for="checkin-hrv">HRV (ms) — required this open</label>
+          <input id="checkin-hrv" inputmode="decimal" placeholder="e.g. 45" required>
+        </div>
+        <div id="checkin-sleep-block" class="stack">
+          <label for="checkin-sleep">Sleep last night (hours) — required today</label>
+          <input id="checkin-sleep" inputmode="decimal" placeholder="e.g. 7.5" required>
+        </div>
+        <label for="checkin-hr">Resting heart rate (optional)</label>
+        <input id="checkin-hr" inputmode="decimal" placeholder="bpm">
+        <button class="primary" type="button" id="checkin-save">Continue</button>
+        <p class="error" id="checkin-error"></p>
+      </div>
+    </section>
+
+    <section class="screen home hidden" data-screen="home">
+      <header class="account-bar">
+        <p id="home-hello"></p>
+        <button class="text" id="signout-home" type="button">Sign Out</button>
+      </header>
+      <div class="home-hero glass">
+        <p class="eyebrow">Welcome back</p>
+        <h2 id="home-title">Ready when you are</h2>
+        <p class="hint" id="taste-summary"></p>
+        <p class="hint" id="checkin-summary"></p>
+      </div>
+      <div class="home-grid">
+        <button type="button" class="home-card" id="home-stress">
+          <p class="eyebrow">Stress</p>
+          <h2 id="home-stress-title">Weekly PSS</h2>
+          <p class="hint" id="home-stress-hint">Required once a week. Optional to update anytime.</p>
+        </button>
+        <button type="button" class="home-card" id="home-taste">
+          <p class="eyebrow">Taste</p>
+          <h2>Update music taste</h2>
+          <p class="hint">Your genres, artists, and songs stay saved until you change them.</p>
+        </button>
+      </div>
+      <div class="glass stack">
+        <button class="primary" id="home-recommend" type="button">Recommend music</button>
+        <p class="error" id="home-error"></p>
+      </div>
+    </section>
+
+    <section class="screen hidden" data-screen="taste">
+      <header class="top">
+        <button class="text" data-next="welcome">Back</button>
+        <p>1 of 3</p>
+      </header>
+      <div class="glass">
+        <p class="eyebrow">Taste</p>
+        <h2>What should we match?</h2>
+        <p class="hint">Choose genres and artists, or connect Spotify.</p>
+        <div class="segmented">
+          <button class="seg on" id="mode-manual" type="button">I'll choose</button>
+          <button class="seg" id="mode-spotify" type="button">Spotify</button>
+        </div>
+        <div id="manual-taste" class="stack">
+          <label for="genre-search">Genres</label>
+          <div class="typeahead" data-typeahead="genres">
+            <input id="genre-search" placeholder="Start typing a genre…" autocomplete="off">
+            <div id="genre-suggest" class="suggest hidden" role="listbox"></div>
+          </div>
+          <div id="genre-chips" class="chips"></div>
+
+          <label for="artist-search">Artists</label>
+          <div class="typeahead" data-typeahead="artists">
+            <input id="artist-search" placeholder="Start typing an artist…" autocomplete="off">
+            <div id="artist-suggest" class="suggest hidden" role="listbox"></div>
+          </div>
+          <div id="artist-chips" class="chips"></div>
+
+          <label for="song-search">Favorite songs</label>
+          <div class="typeahead" data-typeahead="songs">
+            <input id="song-search" placeholder="Start typing a song…" autocomplete="off">
+            <div id="song-suggest" class="suggest hidden" role="listbox"></div>
+          </div>
+          <div id="song-chips" class="chips"></div>
+          <p class="hint">Type to search, tap a suggestion to add it. Tap a chip to remove.</p>
+        </div>
+        <div id="spotify-taste" class="hidden stack">
+          <p class="hint" id="spotify-status">Connect Spotify to personalize with your listening history.</p>
+          <p class="hint" id="spotify-computer-note">
+            Spotify rejects phone / Wi‑Fi IP redirects as insecure. In the Spotify Developer Dashboard keep
+            <strong>only</strong> <code class="inline">http://127.0.0.1:8501/</code> — delete any
+            <code class="inline">http://192.168…</code> entry. Then open AMUSE on this Mac at that same URL, sign in, and connect once. Your phone can use Spotify afterward on the same AMUSE account.
+          </p>
+          <a class="primary link" id="spotify-login" href="/spotify/login">Log in with Spotify</a>
+          <button class="ghost hidden" id="spotify-logout" type="button">Disconnect</button>
+          <p class="error" id="spotify-error"></p>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" data-next="stress">Continue</button>
+      </div>
+    </section>
+
+    <section class="screen hidden" data-screen="stress">
+      <header class="top">
+        <button class="text" data-next="taste">Back</button>
+        <p id="question-count">2 of 3</p>
+      </header>
+      <div class="glass">
+        <p class="eyebrow">Stress &amp; health</p>
+        <h2 id="question-text"></h2>
+        <p class="hint">Think about the last month. This is 40% of your stress score.</p>
+        <div id="answers" class="answers"></div>
+      </div>
+      <div class="actions row">
+        <button class="ghost hidden" id="question-prev" type="button">Previous question</button>
+        <button class="primary" id="question-next" type="button">Next</button>
+      </div>
+    </section>
+
+    <section class="screen hidden" data-screen="health">
+      <header class="top">
+        <button class="text" id="health-back" type="button">Back to last question</button>
+        <p>3 of 3</p>
+      </header>
+      <div class="glass stack">
+        <p class="eyebrow">Stress &amp; health</p>
+        <h2>Confirm check-in</h2>
+        <p class="hint">Sleep is required daily. HRV is required each time you open AMUSE. Values you already entered today are filled in.</p>
+        <label for="heart-rate">Resting heart rate (optional)</label>
+        <input id="heart-rate" inputmode="decimal" placeholder="bpm">
+        <label for="sleep-hours">Sleep last night (hours)</label>
+        <input id="sleep-hours" inputmode="decimal" placeholder="hours" required>
+        <label for="hrv-input">HRV (ms)</label>
+        <input id="hrv-input" inputmode="decimal" placeholder="ms" required>
+      </div>
+      <div class="actions">
+        <button class="primary" id="recommend" type="button">Recommend music</button>
+      </div>
+      <p class="error" id="form-error"></p>
+    </section>
+
+    <section class="screen hidden" data-screen="results">
+      <header class="top">
+        <button class="text" data-next="health">Edit</button>
+        <p id="stress-label"></p>
+      </header>
+      <div class="results-layout">
+        <div>
+          <p class="eyebrow">For this moment</p>
+          <h2>Your ten songs</h2>
+          <p class="hint" id="result-note"></p>
+          <div id="song-list"></div>
+          <div class="actions row">
+            <button class="primary" id="again" type="button">Recommend again</button>
+            <button class="ghost" id="save-playlist" type="button">Save playlist to Spotify</button>
+          </div>
+          <p class="hint" id="playlist-note"></p>
+        </div>
+        <form id="feedback" class="feedback glass stack">
+          <h2>How did one land?</h2>
+          <select id="feedback-song"></select>
+          <label>Helpfulness, 1 to 5</label>
+          <input id="helpfulness" type="range" min="1" max="5" value="3">
+          <label>Stress after listening</label>
+          <select id="post-stress">
+            <option>Low Stress</option>
+            <option>Moderate Stress</option>
+            <option selected>High Stress</option>
+          </select>
+          <button class="ghost" type="submit">Save feedback</button>
+          <p class="hint" id="feedback-note"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js?v=7"></script>
+</body>
+</html>
