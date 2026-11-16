@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: amuse
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT --timeout 180 web.server:app
+    envVars:
+      - key: AMUSE_SECRET
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
+      - key: AMUSE_REDIRECT_URI
+        sync: false

@@ -20,8 +20,13 @@ from web import shortcut_builder
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("AMUSE_SECRET", "amuse-local-dev")
+# Trust Render/Railway HTTPS proxies so request.scheme is correct.
+if os.environ.get("RENDER") or os.environ.get("RAILWAY_ENVIRONMENT"):
+    from werkzeug.middleware.proxy_fix import ProxyFix
 
-# Spotify only allows HTTP for loopback 127.0.0.1 — never LAN IP or localhost.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+# Spotify: HTTP only for 127.0.0.1; production must use HTTPS redirect.
 REDIRECT_URI = os.environ.get(
     "AMUSE_REDIRECT_URI",
     "http://127.0.0.1:8501/",
@@ -29,33 +34,42 @@ REDIRECT_URI = os.environ.get(
 
 
 def spotify_redirect_uri():
-
-    return REDIRECT_URI if REDIRECT_URI.endswith("/") else REDIRECT_URI + "/"
+    configured = os.environ.get("AMUSE_REDIRECT_URI")
+    if configured:
+        return configured if configured.endswith("/") else configured + "/"
+    # On a public HTTPS host, use that URL (Spotify rejects LAN HTTP).
+    if request:
+        proto = request.headers.get("X-Forwarded-Proto", request.scheme)
+        host = request.host.split(":")[0]
+        if proto == "https" and host not in ("127.0.0.1", "localhost"):
+            return f"https://{request.host}/"
+    uri = REDIRECT_URI
+    return uri if uri.endswith("/") else uri + "/"
 
 
 def public_base_url():
-
-    return f"{request.scheme}://{request.host}"
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme)
+    return f"{proto}://{request.host}"
 
 
 def can_start_spotify_oauth():
-
     host = request.host.split(":")[0]
-    return host == "127.0.0.1"
+    if host == "127.0.0.1":
+        return True
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme)
+    # Spotify allows HTTPS redirects on any public host.
+    return proto == "https"
 
 
 PSS_MAX_AGE_DAYS = 7
 
 
 def today_local():
-
     return date.today().isoformat()
 
 
 def parse_iso(value):
-
     if not value:
-
         return None
 
     try:
@@ -68,7 +82,6 @@ def parse_iso(value):
 
 
 def health_status(user_id, session_hrv_ok=False):
-
     health = db.load_health(user_id)
     prefs = db.load_preferences(user_id)
     sleep_ok = health.get("sleep_date") == today_local() and health.get("sleep_hours") is not None
@@ -76,7 +89,6 @@ def health_status(user_id, session_hrv_ok=False):
     pss_ok = False
 
     if pss_at and prefs and prefs.get("last_pss") and len(prefs["last_pss"]) == 10:
-
         pss_ok = datetime.utcnow() - pss_at <= timedelta(days=PSS_MAX_AGE_DAYS)
 
     # HRV is required once per browser/app open (client session flag).
@@ -95,14 +107,12 @@ def health_status(user_id, session_hrv_ok=False):
 
 
 def login_required(view):
-
     @wraps(view)
     def wrapped(*args, **kwargs):
 
         if "user_id" not in session:
 
             if request.path.startswith("/api/"):
-
                 return jsonify({"error": "Sign in first."}), 401
 
             return redirect("/")
@@ -113,7 +123,6 @@ def login_required(view):
 
 
 def exchange_code(code):
-
     client_id = amuse.DEFAULT_CLIENT_ID
     client_secret = amuse.DEFAULT_CLIENT_SECRET
     auth_string = f"{client_id}:{client_secret}"
@@ -133,14 +142,12 @@ def exchange_code(code):
     )
 
     if response.status_code != 200:
-
         raise RuntimeError(response.text)
 
     return response.json()
 
 
 def store_spotify_tokens(user_id, token_data, profile=None):
-
     expires_in = int(token_data.get("expires_in") or 3600)
     expires_at = (datetime.utcnow() + timedelta(seconds=expires_in - 60)).isoformat()
     profile = profile or {}
@@ -163,11 +170,9 @@ def store_spotify_tokens(user_id, token_data, profile=None):
 
 
 def spotify_access_for_user(user_id):
-
     account = db.load_spotify_account(user_id)
 
     if not account:
-
         token = session.get("spotify_token")
         return token, session.get("spotify_name", ""), session.get("spotify_user", "")
 
@@ -213,7 +218,6 @@ def spotify_access_for_user(user_id):
 
 
 def song_rows(frame):
-
     rows = []
 
     for _, song in frame.iterrows():
@@ -221,13 +225,11 @@ def song_rows(frame):
         genre = ""
 
         if amuse.GENRE_COLUMN is not None:
-
             genre = str(song[amuse.GENRE_COLUMN])
 
         track_id = ""
 
         if "track_id" in song.index and song["track_id"] is not None:
-
             track_id = str(song["track_id"])
 
         rows.append({
@@ -244,16 +246,13 @@ def song_rows(frame):
 
 
 def number_or_none(value):
-
     if value in (None, ""):
-
         return None
 
     return float(value)
 
 
 def lan_ip():
-
     try:
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -269,9 +268,7 @@ def lan_ip():
 
 @app.get("/")
 def home():
-
     if request.args.get("code") or request.args.get("error"):
-
         return finish_spotify_login()
 
     return render_template("index.html")
@@ -279,9 +276,7 @@ def home():
 
 @app.get("/api/me")
 def me():
-
     if "user_id" not in session:
-
         return jsonify({"signed_in": False})
 
     prefs = db.load_preferences(session["user_id"])
@@ -298,10 +293,10 @@ def me():
         "has_taste": bool(
             prefs
             and (
-                prefs["genres"]
-                or prefs["artists"]
-                or prefs["songs"]
-                or prefs["use_spotify"]
+                    prefs["genres"]
+                    or prefs["artists"]
+                    or prefs["songs"]
+                    or prefs["use_spotify"]
             )
         ),
         "checkin": status,
@@ -311,7 +306,6 @@ def me():
 @app.post("/api/checkin")
 @login_required
 def post_checkin():
-
     data = request.get_json(force=True)
     sleep_hours = number_or_none(data.get("sleep_hours"))
     hrv = number_or_none(data.get("hrv"))
@@ -322,13 +316,11 @@ def post_checkin():
     if mark_sleep:
 
         if sleep_hours is None or sleep_hours <= 0 or sleep_hours > 24:
-
             return jsonify({"error": "Enter last night's sleep in hours (required today)."}), 400
 
     if mark_hrv:
 
         if hrv is None or hrv <= 0:
-
             return jsonify({"error": "Enter your HRV for this session (required)."}), 400
 
         session["hrv_session_ok"] = True
@@ -353,26 +345,21 @@ def post_checkin():
 
 @app.post("/api/signup")
 def signup():
-
     data = request.get_json(force=True)
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip()
     password = data.get("password") or ""
 
     if len(name) < 2:
-
         return jsonify({"error": "Enter your name."}), 400
 
     if "@" not in email:
-
         return jsonify({"error": "Enter a valid email."}), 400
 
     if len(password) < 6:
-
         return jsonify({"error": "Password needs at least 6 characters."}), 400
 
     if db.find_user_by_email(email):
-
         return jsonify({"error": "That email already has an account."}), 400
 
     user = db.create_user(name, email, password)
@@ -385,7 +372,6 @@ def signup():
 
 @app.post("/api/signin")
 def signin():
-
     data = request.get_json(force=True)
     user = db.authenticate(
         data.get("email") or "",
@@ -393,7 +379,6 @@ def signin():
     )
 
     if not user:
-
         return jsonify({"error": "Email or password is wrong."}), 401
 
     session["user_id"] = user["id"]
@@ -405,7 +390,6 @@ def signin():
 
 @app.post("/api/signout")
 def signout():
-
     session.clear()
     return jsonify({"ok": True})
 
@@ -413,14 +397,12 @@ def signout():
 @app.post("/api/session-hrv-clear")
 @login_required
 def clear_session_hrv():
-
     session.pop("hrv_session_ok", None)
     return jsonify({"ok": True})
 
 
 @app.post("/api/forgot-password")
 def forgot_password():
-
     data = request.get_json(force=True)
     email = (data.get("email") or "").strip()
     name = (data.get("name") or "").strip()
@@ -428,25 +410,20 @@ def forgot_password():
     confirm = data.get("confirm") or ""
 
     if "@" not in email:
-
         return jsonify({"error": "Enter the email on your account."}), 400
 
     if len(name) < 2:
-
         return jsonify({"error": "Enter the name on your account."}), 400
 
     if len(password) < 6:
-
         return jsonify({"error": "Password needs at least 6 characters."}), 400
 
     if password != confirm:
-
         return jsonify({"error": "Passwords do not match."}), 400
 
     user = db.reset_password(email, name, password)
 
     if not user:
-
         return jsonify({
             "error": "No account matched that email and name.",
         }), 404
@@ -461,7 +438,6 @@ def forgot_password():
 @app.get("/api/options")
 @login_required
 def options():
-
     return jsonify({
         "genres": amuse.catalog_genre_choices(),
         "artists": amuse.catalog_artist_choices(),
@@ -480,7 +456,6 @@ def options():
 @app.get("/api/preferences")
 @login_required
 def get_preferences():
-
     prefs = db.load_preferences(session["user_id"])
 
     return jsonify(prefs or {
@@ -495,7 +470,6 @@ def get_preferences():
 @app.post("/api/preferences")
 @login_required
 def post_preferences():
-
     data = request.get_json(force=True)
     last_pss = data.get("last_pss")
 
@@ -509,7 +483,6 @@ def post_preferences():
     )
 
     if last_pss is not None and len(last_pss) == 10:
-
         db.save_health(
             session["user_id"],
             pss_at=datetime.utcnow().isoformat(),
@@ -521,7 +494,6 @@ def post_preferences():
 @app.get("/api/spotify")
 @login_required
 def spotify_status():
-
     token, name, _user = spotify_access_for_user(session["user_id"])
 
     return jsonify({
@@ -535,7 +507,6 @@ def spotify_status():
 
 @app.get("/api/device")
 def device_info():
-
     base = public_base_url().rstrip("/")
     return jsonify({
         "base_url": base,
@@ -558,7 +529,6 @@ def device_info():
 
 @app.get("/amuse-watch.shortcut")
 def download_watch_shortcut():
-
     """Generate (and sign when possible) an AMUSE Watch shortcut for this host."""
 
     base = public_base_url().rstrip("/")
@@ -575,9 +545,7 @@ def download_watch_shortcut():
 @app.get("/spotify/login")
 @login_required
 def spotify_login():
-
     if not can_start_spotify_oauth():
-
         return redirect("/?spotify=use-computer")
 
     params = urllib.parse.urlencode({
@@ -594,24 +562,19 @@ def spotify_login():
 @app.get("/spotify/callback")
 @app.get("/callback")
 def spotify_callback():
-
     return finish_spotify_login()
 
 
 def finish_spotify_login():
-
     if request.args.get("error"):
-
         return redirect("/?spotify=denied")
 
     code = request.args.get("code")
 
     if not code:
-
         return redirect("/")
 
     if "user_id" not in session:
-
         return redirect("/?spotify=signin-first")
 
     token_data = exchange_code(code)
@@ -640,7 +603,6 @@ def finish_spotify_login():
 @app.post("/spotify/logout")
 @login_required
 def spotify_logout():
-
     db.clear_spotify_account(session["user_id"])
     session.pop("spotify_token", None)
     session.pop("spotify_name", None)
@@ -652,12 +614,10 @@ def spotify_logout():
 @app.post("/api/recommend")
 @login_required
 def recommend():
-
     data = request.get_json(force=True)
     answers = [int(value) for value in data.get("pss", [])]
 
     if len(answers) != 10:
-
         return jsonify({"error": "Answer all 10 stress questions."}), 400
 
     pss_total, pss_value = amuse.score_pss(answers)
@@ -668,21 +628,18 @@ def recommend():
     health = status["health"]
 
     if status["needs_pss"]:
-
         return jsonify({
             "error": "Complete this week's stress questionnaire first.",
             "needs_pss": True,
         }), 400
 
     if status["needs_sleep"]:
-
         return jsonify({
             "error": "Enter last night's sleep hours (required once each day).",
             "needs_sleep": True,
         }), 400
 
     if status["needs_hrv"]:
-
         return jsonify({
             "error": "Enter your HRV for this session (required each time you open AMUSE).",
             "needs_hrv": True,
@@ -741,7 +698,6 @@ def recommend():
             songs = amuse.split_names(raw_songs)
 
         if not genres and not artists and not songs:
-
             return jsonify({
                 "error": "Pick at least one genre, artist, or song."
             }), 400
@@ -818,11 +774,9 @@ def recommend():
 @app.post("/api/playlist")
 @login_required
 def create_playlist():
-
     access_token, _name, spotify_user = spotify_access_for_user(session["user_id"])
 
     if not access_token or not spotify_user:
-
         return jsonify({
             "error": "Connect Spotify on your computer at http://127.0.0.1:8501 first."
         }), 400
@@ -836,7 +790,6 @@ def create_playlist():
     ]
 
     if not track_ids:
-
         return jsonify({"error": "No Spotify track ids in this list."}), 400
 
     headers = {
@@ -858,10 +811,9 @@ def create_playlist():
     )
 
     if create.status_code not in (200, 201):
-
         return jsonify({
             "error": "Could not create the playlist. "
-            "Disconnect Spotify and log in again so playlist access is granted."
+                     "Disconnect Spotify and log in again so playlist access is granted."
         }), 400
 
     playlist = create.json()
@@ -875,7 +827,6 @@ def create_playlist():
     )
 
     if add.status_code not in (200, 201):
-
         return jsonify({"error": "Playlist was created, but songs failed to add."}), 400
 
     return jsonify({
@@ -888,7 +839,6 @@ def create_playlist():
 @app.post("/api/feedback")
 @login_required
 def feedback():
-
     data = request.get_json(force=True)
 
     db.save_feedback(
@@ -914,7 +864,6 @@ def feedback():
 
 @app.get("/manifest.webmanifest")
 def web_manifest():
-
     return jsonify({
         "name": "AMUSE",
         "short_name": "AMUSE",
@@ -934,13 +883,14 @@ def web_manifest():
     }), 200, {"Content-Type": "application/manifest+json"}
 
 
-if __name__ == "__main__":
+# Gunicorn / cloud entry also needs the DB tables.
+db.init_db()
 
-    db.init_db()
+
+if __name__ == "__main__":
     address = lan_ip()
+    port = int(os.environ.get("PORT", "8501"))
     print("Computer (Spotify here):  http://127.0.0.1:8501")
     print(f"Phone (same Wi‑Fi):       http://{address}:8501")
-    print("Spotify redirect URI:     ", spotify_redirect_uri())
-    print("Add exactly that URI in the Spotify Developer Dashboard.")
     print("Accounts and history are stored in amuse_data.db")
-    app.run(host="0.0.0.0", port=8501, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)
